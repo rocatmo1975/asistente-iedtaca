@@ -13,98 +13,90 @@ from langchain_core.output_parsers import StrOutputParser
 NOMBRE_APP = "ASISTENTE IA IEDTACA"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
+DOCS_DIR = os.path.join(BASE_DIR, "docs")  # <--- AJUSTADO A "docs"
 
 st.set_page_config(page_title=NOMBRE_APP, page_icon="🏫", layout="wide")
 
-# --- 2. ESTILO Y POSICIONAMIENTO DEL ESCUDO ---
-# Usamos columnas para centrar el logo
-col_espacio_izq, col_logo, col_espacio_der = st.columns([2, 1, 2])
+# Intentar obtener la API KEY desde los Secrets de Streamlit
+api_key = st.secrets.get("OPENAI_API_KEY")
 
+# --- 2. DISEÑO DE INTERFAZ ---
+col_izq, col_logo, col_der = st.columns([2, 1, 2])
 with col_logo:
     if os.path.exists(LOGO_PATH):
         st.image(LOGO_PATH, use_container_width=True)
-    else:
-        st.warning("⚠️ logo.png no encontrado")
 
-# Título centrado con HTML
 st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Institución Educativa Departamental Técnica Agropecuaria Carmen de Ariguaní</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray; font-size: 18px;'>Consulta técnica: Carmen de Ariguaní</p>", unsafe_allow_html=True)
 
-# --- 3. BARRA LATERAL ---
-st.sidebar.header("Seguridad")
-api_key = st.sidebar.text_input("Ingresa tu OpenAI API Key", type="password")
-
-# --- 4. LÓGICA DE INTELIGENCIA ARTIFICIAL ---
-if api_key:
+# --- 3. LÓGICA DE CARGA AUTOMÁTICA ---
+if not api_key:
+    st.error("❌ No se encontró la 'OPENAI_API_KEY' en los Secrets. Por favor, agrégala en Settings > Secrets.")
+else:
     os.environ["OPENAI_API_KEY"] = api_key
-    st.markdown("---")
     
-    import os
-from langchain_community.document_loaders import PyPDFLoader
-
-# Ruta de la carpeta donde están tus PDF en GitHub
-docs_path = "documentos/"
-
-if os.path.exists(docs_path):
-    all_docs = []
-    for file in os.listdir(docs_path):
-        if file.endswith(".pdf"):
-            loader = PyPDFLoader(os.path.join(docs_path, file))
-            all_docs.extend(loader.load())
-    
-    if all_docs:
-        # Aquí continúa el resto de tu lógica para crear la base de datos (vectorstore)
-        # Asegúrate de usar 'all_docs' en lugar de los archivos subidos.
-        st.success(f"¡Éxito! Se cargaron {len(os.listdir(docs_path))} documentos desde GitHub.")
-    else:
-        st.error("No encontré archivos PDF en la carpeta 'documentos'.")
-else:
-    st.error("No se encontró la carpeta 'documentos'. Revisa el nombre en GitHub.")
-    
-    if archivo_pdf:
-        temp_path = os.path.join(BASE_DIR, "temp_doc.pdf")
-        with open(temp_path, "wb") as f:
-            f.write(archivo_pdf.getbuffer())
+    if os.path.exists(DOCS_DIR):
+        pdf_files = [f for f in os.listdir(DOCS_DIR) if f.endswith(".pdf")]
         
-        with st.spinner("Procesando archivos de la institución..."):
-            try:
-                loader = PyPDFLoader(temp_path)
-                paginas = loader.load()
-                
-                vector_db = FAISS.from_documents(paginas, OpenAIEmbeddings())
-                retriever = vector_db.as_retriever()
-                
-                model = ChatOpenAI(model="gpt-4o", temperature=0)
-                
-                template = """
-                Eres el ASISTENTE IA IEDTACA. 
-                Tu misión es ayudar a los docentes respondiendo de forma clara.
-                Usa solo este contexto institucional: {context}
-                
-                Pregunta: {question}
-                """
-                prompt = ChatPromptTemplate.from_template(template)
+        if not pdf_files:
+            st.warning(f"⚠️ No hay archivos PDF en la carpeta '{DOCS_DIR}'.")
+        else:
+            with st.spinner("Cargando documentos de la institución..."):
+                try:
+                    paginas = []
+                    for pdf in pdf_files:
+                        loader = PyPDFLoader(os.path.join(DOCS_DIR, pdf))
+                        paginas.extend(loader.load())
+                    
+                    vector_db = FAISS.from_documents(paginas, OpenAIEmbeddings())
+                    retriever = vector_db.as_retriever()
+                    
+                    model = ChatOpenAI(model="gpt-4o", temperature=0)
+                    
+                    template = """
+                    Eres el ASISTENTE IA IEDTACA. 
+                    Responde de forma clara basándote solo en el contexto institucional.
+                    Si no sabes la respuesta basándote en el contexto, dilo amablemente.
+                    
+                    Contexto: {context}
+                    Pregunta: {question}
+                    """
+                    prompt = ChatPromptTemplate.from_template(template)
 
-                def format_docs(docs):
-                    return "\n\n".join(doc.page_content for doc in docs)
+                    def format_docs(docs):
+                        return "\n\n".join(doc.page_content for doc in docs)
 
-                rag_chain = (
-                    {"context": retriever | format_docs, "question": RunnablePassthrough()}
-                    | prompt | model | StrOutputParser()
-                )
+                    rag_chain = (
+                        {"context": retriever | format_docs, "question": RunnablePassthrough()}
+                        | prompt | model | StrOutputParser()
+                    )
 
-                st.success("✅ Conocimiento cargado correctamente.")
+                    st.success(f"✅ {len(pdf_files)} documentos cargados correctamente.")
+                    
+                    # --- 4. ÁREA DE CHAT ---
+                    st.markdown("---")
+                    if "messages" not in st.session_state:
+                        st.session_state.messages = []
+
+                    # Mostrar historial
+                    for message in st.session_state.messages:
+                        with st.chat_message(message["role"]):
+                            st.markdown(message["content"])
+
+                    # Entrada de usuario
+                    if prompt_input := st.chat_input("Escribe tu duda aquí (ej. ¿Qué dice el PEI sobre la misión?)"):
+                        st.session_state.messages.append({"role": "user", "content": prompt_input})
+                        with st.chat_message("user"):
+                            st.markdown(prompt_input)
+
+                        with st.chat_message("assistant"):
+                            with st.spinner("Analizando..."):
+                                respuesta = rag_chain.invoke(prompt_input)
+                                st.markdown(respuesta)
+                        st.session_state.messages.append({"role": "assistant", "content": respuesta})
                 
-                # Área de chat
-                pregunta = st.text_input("💬 ¿Qué consulta deseas realizar?")
-                if pregunta:
-                    with st.spinner("Analizando documentos oficiales..."):
-                        respuesta = rag_chain.invoke(pregunta)
-                        st.markdown("### Respuesta del Asistente:")
-                        st.info(respuesta)
-            
-            except Exception as e:
-                st.error(f"Error técnico: {e}")
-else:
+                except Exception as e:
+                    st.error(f"Error al procesar: {e}")
+    else:
+        st.error(f"❌ No existe la carpeta '{DOCS_DIR}' en el repositorio.")
 
-    st.info("👈 Ingresa la clave API en la barra lateral para comenzar.")
