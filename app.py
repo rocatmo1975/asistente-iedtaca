@@ -39,7 +39,27 @@ if api_key:
     os.environ["OPENAI_API_KEY"] = api_key
     st.markdown("---")
     
-    archivo_pdf = st.file_uploader("📂 Cargar documentos (Manual de Convivencia, PEI, etc.)", type="pdf")
+    import os
+from langchain_community.document_loaders import PyPDFLoader
+
+# Ruta de la carpeta donde están tus PDF en GitHub
+docs_path = "documentos/"
+
+if os.path.exists(docs_path):
+    all_docs = []
+    for file in os.listdir(docs_path):
+        if file.endswith(".pdf"):
+            loader = PyPDFLoader(os.path.join(docs_path, file))
+            all_docs.extend(loader.load())
+    
+    if all_docs:
+        # Aquí continúa el resto de tu lógica para crear la base de datos (vectorstore)
+        # Asegúrate de usar 'all_docs' en lugar de los archivos subidos.
+        st.success(f"¡Éxito! Se cargaron {len(os.listdir(docs_path))} documentos desde GitHub.")
+    else:
+        st.error("No encontré archivos PDF en la carpeta 'documentos'.")
+else:
+    st.error("No se encontró la carpeta 'documentos'. Revisa el nombre en GitHub.")
     
     if archivo_pdf:
         temp_path = os.path.join(BASE_DIR, "temp_doc.pdf")
@@ -86,4 +106,5 @@ if api_key:
             except Exception as e:
                 st.error(f"Error técnico: {e}")
 else:
+
     st.info("👈 Ingresa la clave API en la barra lateral para comenzar.")
