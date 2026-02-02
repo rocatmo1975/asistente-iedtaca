@@ -9,29 +9,32 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-# --- 1. CONFIGURACIÓN DE IDENTIDAD ---
+# --- 1. CONFIGURACIÓN ---
 NOMBRE_APP = "ASISTENTE IA IEDTACA"
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# Intentamos buscar el logo, pero no dejaremos que la app falle por esto
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
-DOCS_DIR = os.path.join(BASE_DIR, "docs")  # <--- AJUSTADO A "docs"
 
 st.set_page_config(page_title=NOMBRE_APP, page_icon="🏫", layout="wide")
 
-# Intentar obtener la API KEY desde los Secrets de Streamlit
-api_key = st.secrets.get("OPENAI_API_KEY")
+# --- 2. DISEÑO DE INTERFAZ (MODO SEGURO) ---
+st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
 
-# --- 2. DISEÑO DE INTERFAZ ---
-col_izq, col_logo, col_der = st.columns([2, 1, 2])
-with col_logo:
-    if os.path.exists(LOGO_PATH):
+# Intentar mostrar logo sin romper la app
+if os.path.exists(LOGO_PATH):
+    col1, col2, col3 = st.columns([2, 1, 2])
+    with col2:
         st.image(LOGO_PATH, use_container_width=True)
 
-st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
-st.markdown("<p style='text-align: center; color: gray; font-size: 18px;'>Consulta técnica: Carmen de Ariguaní</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
+st.markdown("---")
 
-# --- 3. LÓGICA DE CARGA AUTOMÁTICA ---
+# --- 3. LÓGICA AUTOMÁTICA ---
+api_key = st.secrets.get("OPENAI_API_KEY")
+DOCS_DIR = os.path.join(BASE_DIR, "docs")
+
 if not api_key:
-    st.error("❌ No se encontró la 'OPENAI_API_KEY' en los Secrets. Por favor, agrégala en Settings > Secrets.")
+    st.error("❌ Falta la OPENAI_API_KEY en los Secrets de Streamlit.")
 else:
     os.environ["OPENAI_API_KEY"] = api_key
     
@@ -39,9 +42,9 @@ else:
         pdf_files = [f for f in os.listdir(DOCS_DIR) if f.endswith(".pdf")]
         
         if not pdf_files:
-            st.warning(f"⚠️ No hay archivos PDF en la carpeta '{DOCS_DIR}'.")
+            st.info("Esperando archivos PDF en la carpeta 'docs'...")
         else:
-            with st.spinner("Cargando documentos de la institución..."):
+            with st.spinner("Cargando base de conocimiento..."):
                 try:
                     paginas = []
                     for pdf in pdf_files:
@@ -54,10 +57,7 @@ else:
                     model = ChatOpenAI(model="gpt-4o", temperature=0)
                     
                     template = """
-                    Eres el ASISTENTE IA IEDTACA. 
-                    Responde de forma clara basándote solo en el contexto institucional.
-                    Si no sabes la respuesta basándote en el contexto, dilo amablemente.
-                    
+                    Eres el ASISTENTE IA IEDTACA. Responde basándote en el contexto institucional.
                     Contexto: {context}
                     Pregunta: {question}
                     """
@@ -71,32 +71,27 @@ else:
                         | prompt | model | StrOutputParser()
                     )
 
-                    st.success(f"✅ {len(pdf_files)} documentos cargados correctamente.")
+                    st.success(f"✅ {len(pdf_files)} documentos institucionales listos.")
                     
-                    # --- 4. ÁREA DE CHAT ---
-                    st.markdown("---")
+                    # --- 4. CHAT ---
                     if "messages" not in st.session_state:
                         st.session_state.messages = []
 
-                    # Mostrar historial
                     for message in st.session_state.messages:
                         with st.chat_message(message["role"]):
                             st.markdown(message["content"])
 
-                    # Entrada de usuario
-                    if prompt_input := st.chat_input("Escribe tu duda aquí (ej. ¿Qué dice el PEI sobre la misión?)"):
+                    if prompt_input := st.chat_input("¿En qué puedo ayudarte hoy?"):
                         st.session_state.messages.append({"role": "user", "content": prompt_input})
                         with st.chat_message("user"):
                             st.markdown(prompt_input)
 
                         with st.chat_message("assistant"):
-                            with st.spinner("Analizando..."):
-                                respuesta = rag_chain.invoke(prompt_input)
-                                st.markdown(respuesta)
+                            respuesta = rag_chain.invoke(prompt_input)
+                            st.markdown(respuesta)
                         st.session_state.messages.append({"role": "assistant", "content": respuesta})
                 
                 except Exception as e:
-                    st.error(f"Error al procesar: {e}")
+                    st.error(f"Error en el procesamiento: {e}")
     else:
-        st.error(f"❌ No existe la carpeta '{DOCS_DIR}' en el repositorio.")
-
+        st.error(f"No se encuentra la carpeta 'docs'. Créala en GitHub y sube tus archivos allí.")
