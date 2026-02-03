@@ -9,17 +9,23 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-# --- 1. CONFIGURACIÓN DE PÁGINA ---
-NOMBRE_APP = "ASISTENTE IA IEDTACA"
+# --- 1. CONFIGURACIÓN DE PÁGINA E ICONO ---
+# Definimos las rutas primero
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
+NOMBRE_APP = "ASISTENTE IA IEDTACA"
 
-st.set_page_config(page_title=NOMBRE_APP, page_icon="🏫", layout="wide")
+# Aquí configuramos que el logo sea el icono de la pestaña y de la app instalada
+st.set_page_config(
+    page_title=NOMBRE_APP,
+    page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🏫",
+    layout="wide"
+)
 
-# --- 2. DISEÑO DE INTERFAZ (MODO ROBUSTO) ---
+# --- 2. DISEÑO DE INTERFAZ ---
 st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
 
-# Intentar mostrar logo sin bloquear la app si falla
+# Mostrar el escudo en el cuerpo de la página
 if os.path.exists(LOGO_PATH):
     col1, col2, col3 = st.columns([2, 1, 2])
     with col2:
@@ -33,12 +39,11 @@ else:
 st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# --- 3. LÓGICA DE IA CON CACHÉ (PARA 61+ DOCUMENTOS) ---
+# --- 3. LÓGICA DE IA CON CACHÉ ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-# Esta función memoriza los documentos para que no tarden en cargar cada vez
-@st.cache_resource(show_spinner="Analizando base de conocimiento institucional... Por favor espera un momento.")
+@st.cache_resource(show_spinner="Cargando base de conocimiento... Esto solo tarda la primera vez.")
 def inicializar_ia(folder_path, _api_key):
     if not _api_key:
         return None
@@ -59,11 +64,9 @@ def inicializar_ia(folder_path, _api_key):
             loader = PyPDFLoader(ruta_pdf)
             paginas.extend(loader.load())
         
-        # Crear índice de búsqueda
         vector_db = FAISS.from_documents(paginas, OpenAIEmbeddings())
         retriever = vector_db.as_retriever(search_kwargs={"k": 3})
         
-        # Configurar el modelo
         model = ChatOpenAI(model="gpt-4o", temperature=0)
         
         template = """
@@ -87,37 +90,33 @@ def inicializar_ia(folder_path, _api_key):
         st.error(f"Error procesando documentos: {e}")
         return None
 
-# Ejecutar la lógica
 if not api_key:
-    st.error("❌ Error: No se encontró la API KEY en los Secrets de Streamlit.")
+    st.error("❌ Falta la API KEY en los Secrets.")
 else:
     rag_chain = inicializar_ia(DOCS_DIR, api_key)
     
     if rag_chain:
-        st.success("✅ ¡Asistente listo! Ya puedes realizar tus consultas.")
+        st.success("✅ Asistente activo.")
         
-        # --- 4. INTERFAZ DE CHAT ---
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
-        # Mostrar historial
         for message in st.session_state.messages:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        # Entrada de usuario
-        if prompt_input := st.chat_input("¿Qué deseas consultar sobre la institución?"):
+        if prompt_input := st.chat_input("Escribe tu pregunta aquí..."):
             st.session_state.messages.append({"role": "user", "content": prompt_input})
             with st.chat_message("user"):
                 st.markdown(prompt_input)
 
             with st.chat_message("assistant"):
-                with st.spinner("Pensando..."):
+                with st.spinner("Buscando en los documentos..."):
                     try:
                         respuesta = rag_chain.invoke(prompt_input)
                         st.markdown(respuesta)
                         st.session_state.messages.append({"role": "assistant", "content": respuesta})
                     except Exception as e:
-                        st.error(f"Hubo un problema al generar la respuesta: {e}")
+                        st.error(f"Error: {e}")
     else:
-        st.warning("Aún no se han cargado documentos PDF en la carpeta 'docs'.")
+        st.warning("No hay PDFs en la carpeta 'docs'.")
