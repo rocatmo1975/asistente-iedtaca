@@ -9,18 +9,30 @@ from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 
-# --- 1. CONFIGURACIÓN DE PÁGINA E ICONO ---
-# Definimos las rutas primero
+# --- 1. CONFIGURACIÓN DE PÁGINA E ICONO REFORZADO ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
 NOMBRE_APP = "ASISTENTE IA IEDTACA"
 
-# Aquí configuramos que el logo sea el icono de la pestaña y de la app instalada
+# Configuración estándar de Streamlit
 st.set_page_config(
     page_title=NOMBRE_APP,
     page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🏫",
     layout="wide"
 )
+
+# INYECCIÓN DE CÓDIGO HTML PARA CELULARES (Esto fuerza el icono en Android/iOS)
+st.markdown(f"""
+    <style>
+        /* Ocultar el menú de Streamlit para que parezca app nativa */
+        #MainMenu {{visibility: hidden;}}
+        footer {{visibility: hidden;}}
+    </style>
+    <head>
+        <link rel="shortcut icon" href="https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/logo.png">
+        <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/logo.png">
+    </head>
+""", unsafe_allow_html=True)
 
 # --- 2. DISEÑO DE INTERFAZ ---
 st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
@@ -38,7 +50,6 @@ else:
 
 st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
 st.markdown("---")
-
 # --- 3. LÓGICA DE IA CON CACHÉ ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
@@ -120,3 +131,4 @@ else:
                         st.error(f"Error: {e}")
     else:
         st.warning("No hay PDFs en la carpeta 'docs'.")
+
