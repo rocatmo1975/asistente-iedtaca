@@ -12,26 +12,29 @@ from langchain_core.output_parsers import StrOutputParser
 # --- 1. CONFIGURACIÓN DE PÁGINA E ICONO REFORZADO ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
+# Tu link directo de GitHub para asegurar que el celular lo vea
+LOGO_URL_RAW = "https://github.com/rocatmo1975/asistente-iedtaca/blob/main/logo.png?raw=true"
 NOMBRE_APP = "ASISTENTE IA IEDTACA"
 
-# Configuración estándar de Streamlit
 st.set_page_config(
     page_title=NOMBRE_APP,
     page_icon=LOGO_PATH if os.path.exists(LOGO_PATH) else "🏫",
     layout="wide"
 )
 
-# INYECCIÓN DE CÓDIGO HTML PARA CELULARES (Esto fuerza el icono en Android/iOS)
+# INYECCIÓN DE CÓDIGO HTML PARA ICONO EN CELULARES
 st.markdown(f"""
+    <head>
+        <link rel="icon" type="image/png" href="{LOGO_URL_RAW}">
+        <link rel="apple-touch-icon" href="{LOGO_URL_RAW}">
+        <meta name="mobile-web-app-capable" content="yes">
+        <meta name="apple-mobile-web-app-capable" content="yes">
+    </head>
     <style>
-        /* Ocultar el menú de Streamlit para que parezca app nativa */
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
+        .stChatMessage {{ border-radius: 15px; }}
     </style>
-    <head>
-        <link rel="shortcut icon" href="https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/logo.png">
-        <link rel="apple-touch-icon" href="https://raw.githubusercontent.com/TU_USUARIO/TU_REPOSITORIO/main/logo.png">
-    </head>
 """, unsafe_allow_html=True)
 
 # --- 2. DISEÑO DE INTERFAZ ---
@@ -50,11 +53,12 @@ else:
 
 st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
 st.markdown("---")
+
 # --- 3. LÓGICA DE IA CON CACHÉ ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-@st.cache_resource(show_spinner="Cargando base de conocimiento... Esto solo tarda la primera vez.")
+@st.cache_resource(show_spinner="Analizando base de conocimiento institucional... Espere un momento.")
 def inicializar_ia(folder_path, _api_key):
     if not _api_key:
         return None
@@ -101,14 +105,13 @@ def inicializar_ia(folder_path, _api_key):
         st.error(f"Error procesando documentos: {e}")
         return None
 
+# --- 4. EJECUCIÓN DEL CHAT ---
 if not api_key:
-    st.error("❌ Falta la API KEY en los Secrets.")
+    st.error("❌ Falta la API KEY en los Secrets de Streamlit.")
 else:
     rag_chain = inicializar_ia(DOCS_DIR, api_key)
     
     if rag_chain:
-        st.success("✅ Asistente activo.")
-        
         if "messages" not in st.session_state:
             st.session_state.messages = []
 
@@ -116,19 +119,18 @@ else:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt_input := st.chat_input("Escribe tu pregunta aquí..."):
+        if prompt_input := st.chat_input("¿En qué puedo ayudarte hoy?"):
             st.session_state.messages.append({"role": "user", "content": prompt_input})
             with st.chat_message("user"):
                 st.markdown(prompt_input)
 
             with st.chat_message("assistant"):
-                with st.spinner("Buscando en los documentos..."):
+                with st.spinner("Consultando archivos..."):
                     try:
                         respuesta = rag_chain.invoke(prompt_input)
                         st.markdown(respuesta)
                         st.session_state.messages.append({"role": "assistant", "content": respuesta})
                     except Exception as e:
-                        st.error(f"Error: {e}")
+                        st.error(f"Error en la respuesta: {e}")
     else:
-        st.warning("No hay PDFs en la carpeta 'docs'.")
-
+        st.warning("No se encontraron archivos PDF en la carpeta 'docs'.")
