@@ -8,11 +8,11 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
+from langchain.text_splitter import RecursiveCharacterTextSplitter
 
 # --- 1. CONFIGURACIÓN DE PÁGINA E ICONO REFORZADO ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
-# Tu link directo de GitHub para asegurar que el celular lo vea
 LOGO_URL_RAW = "https://github.com/rocatmo1975/asistente-iedtaca/blob/main/logo.png?raw=true"
 NOMBRE_APP = "ASISTENTE IA IEDTACA"
 
@@ -40,7 +40,6 @@ st.markdown(f"""
 # --- 2. DISEÑO DE INTERFAZ ---
 st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
 
-# Mostrar el escudo en el cuerpo de la página
 if os.path.exists(LOGO_PATH):
     col1, col2, col3 = st.columns([2, 1, 2])
     with col2:
@@ -54,11 +53,11 @@ else:
 st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# --- 3. LÓGICA DE IA CON CACHÉ ---
+# --- 3. LÓGICA DE IA CON MEJORA DE RECUPERACIÓN (RAG) ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-@st.cache_resource(show_spinner="Analizando base de conocimiento institucional... Espere un momento.")
+@st.cache_resource(show_spinner="Analizando y optimizando la base de conocimiento... Esto mejorará las respuestas.")
 def inicializar_ia(folder_path, _api_key):
     if not _api_key:
         return None
@@ -73,23 +72,36 @@ def inicializar_ia(folder_path, _api_key):
         return None
         
     try:
-        paginas = []
+        documentos_completos = []
         for pdf in pdf_files:
             ruta_pdf = os.path.join(folder_path, pdf)
             loader = PyPDFLoader(ruta_pdf)
-            paginas.extend(loader.load())
+            documentos_completos.extend(loader.load())
         
-        vector_db = FAISS.from_documents(paginas, OpenAIEmbeddings())
-        retriever = vector_db.as_retriever(search_kwargs={"k": 3})
+        # DIVISIÓN DE TEXTO: Esto soluciona que la IA no encuentre fuentes
+        # Creamos fragmentos de 1000 caracteres con 200 de solape
+        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        textos_fragmentados = text_splitter.split_documents(documentos_completos)
+        
+        vector_db = FAISS.from_documents(textos_fragmentados, OpenAIEmbeddings())
+        
+        # BUSCADOR MEJORADO: Ahora recupera 10 fragmentos en lugar de 3
+        retriever = vector_db.as_retriever(search_kwargs={"k": 10})
         
         model = ChatOpenAI(model="gpt-4o", temperature=0)
         
         template = """
-        Eres el ASISTENTE IA IEDTACA. Responde de forma amable y profesional basándote en el contexto.
-        Si no sabes la respuesta basándote en el contexto, dilo amablemente.
+        Eres el ASISTENTE IA IEDTACA, experto en la normativa de la institución.
+        Tu misión es responder preguntas de docentes y directivos usando el contexto proporcionado.
+
+        REGLAS DE ORO:
+        1. Si la respuesta está en los documentos, detállala con claridad.
+        2. Si la información es parcial, intenta unir los puntos para ayudar al usuario.
+        3. Si la respuesta NO está en los documentos, di: "Lamentablemente no encontré esa información específica en los manuales cargados, pero le sugiero consultar con [coordinación/secretaría] o revisar el documento de [tema relacionado]".
         
         Contexto: {context}
         Pregunta: {question}
+        Respuesta:
         """
         prompt = ChatPromptTemplate.from_template(template)
 
@@ -119,13 +131,13 @@ else:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt_input := st.chat_input("¿En qué puedo ayudarte hoy?"):
+        if prompt_input := st.chat_input("¿Qué duda técnica o normativa tienes hoy?"):
             st.session_state.messages.append({"role": "user", "content": prompt_input})
             with st.chat_message("user"):
                 st.markdown(prompt_input)
 
             with st.chat_message("assistant"):
-                with st.spinner("Consultando archivos..."):
+                with st.spinner("Escaneando manuales institucionales..."):
                     try:
                         respuesta = rag_chain.invoke(prompt_input)
                         st.markdown(respuesta)
@@ -133,4 +145,4 @@ else:
                     except Exception as e:
                         st.error(f"Error en la respuesta: {e}")
     else:
-        st.warning("No se encontraron archivos PDF en la carpeta 'docs'.")
+        st.warning("⚠️ No se encontraron documentos en la carpeta 'docs'. Asegúrate de subir tus PDFs a GitHub.")
