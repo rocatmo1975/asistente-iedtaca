@@ -8,7 +8,8 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-from langchain.text_splitter import RecursiveCharacterTextSplitter
+# IMPORTACIÓN CORREGIDA:
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 # --- 1. CONFIGURACIÓN DE PÁGINA E ICONO REFORZADO ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -78,14 +79,13 @@ def inicializar_ia(folder_path, _api_key):
             loader = PyPDFLoader(ruta_pdf)
             documentos_completos.extend(loader.load())
         
-        # DIVISIÓN DE TEXTO: Esto soluciona que la IA no encuentre fuentes
-        # Creamos fragmentos de 1000 caracteres con 200 de solape
+        # DIVISIÓN DE TEXTO: Esto permite que la IA encuentre respuestas específicas
         text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
         textos_fragmentados = text_splitter.split_documents(documentos_completos)
         
         vector_db = FAISS.from_documents(textos_fragmentados, OpenAIEmbeddings())
         
-        # BUSCADOR MEJORADO: Ahora recupera 10 fragmentos en lugar de 3
+        # BUSCADOR MEJORADO: Recupera 10 fragmentos para mayor precisión
         retriever = vector_db.as_retriever(search_kwargs={"k": 10})
         
         model = ChatOpenAI(model="gpt-4o", temperature=0)
@@ -94,9 +94,9 @@ def inicializar_ia(folder_path, _api_key):
         Eres el ASISTENTE IA IEDTACA, experto en la normativa de la institución.
         Tu misión es responder preguntas de docentes y directivos usando el contexto proporcionado.
 
-        REGLAS DE ORO:
-        1. Si la respuesta está en los documentos, detállala con claridad.
-        2. Si la información es parcial, intenta unir los puntos para ayudar al usuario.
+        INSTRUCCIONES DE RESPUESTA:
+        1. Si la información está en los documentos, explícala detalladamente.
+        2. Si la información es parcial, intenta relacionar los datos para ayudar al docente.
         3. Si la respuesta NO está en los documentos, di: "Lamentablemente no encontré esa información específica en los manuales cargados, pero le sugiero consultar con [coordinación/secretaría] o revisar el documento de [tema relacionado]".
         
         Contexto: {context}
@@ -145,4 +145,4 @@ else:
                     except Exception as e:
                         st.error(f"Error en la respuesta: {e}")
     else:
-        st.warning("⚠️ No se encontraron documentos en la carpeta 'docs'. Asegúrate de subir tus PDFs a GitHub.")
+        st.warning("⚠️ No se encontraron documentos en la carpeta 'docs'.")
