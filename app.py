@@ -8,10 +8,9 @@ from langchain_community.vectorstores import FAISS
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
-# IMPORTACIÓN CORREGIDA:
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# --- 1. CONFIGURACIÓN DE PÁGINA E ICONO REFORZADO ---
+# --- 1. CONFIGURACIÓN DE PÁGINA E ICONO ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
 LOGO_URL_RAW = "https://github.com/rocatmo1975/asistente-iedtaca/blob/main/logo.png?raw=true"
@@ -23,7 +22,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# INYECCIÓN DE CÓDIGO HTML PARA ICONO EN CELULARES
+# INYECCIÓN DE CÓDIGO HTML PARA ICONO Y ESTILO
 st.markdown(f"""
     <head>
         <link rel="icon" type="image/png" href="{LOGO_URL_RAW}">
@@ -54,11 +53,11 @@ else:
 st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# --- 3. LÓGICA DE IA CON MEJORA DE RECUPERACIÓN (RAG) ---
+# --- 3. LÓGICA DE IA OPTIMIZADA (RAG DE ALTA PRECISIÓN) ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-@st.cache_resource(show_spinner="Analizando y optimizando la base de conocimiento... Esto mejorará las respuestas.")
+@st.cache_resource(show_spinner="Sincronizando base de conocimiento... Esto garantiza respuestas precisas.")
 def inicializar_ia(folder_path, _api_key):
     if not _api_key:
         return None
@@ -79,29 +78,34 @@ def inicializar_ia(folder_path, _api_key):
             loader = PyPDFLoader(ruta_pdf)
             documentos_completos.extend(loader.load())
         
-        # DIVISIÓN DE TEXTO: Esto permite que la IA encuentre respuestas específicas
-        text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+        # AJUSTE DE PRECISIÓN: Fragmentos más pequeños (600) para evitar omisiones
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=600, 
+            chunk_overlap=120,
+            separators=["\n\n", "\n", ".", " ", ""]
+        )
         textos_fragmentados = text_splitter.split_documents(documentos_completos)
         
         vector_db = FAISS.from_documents(textos_fragmentados, OpenAIEmbeddings())
         
-        # BUSCADOR MEJORADO: Recupera 10 fragmentos para mayor precisión
-        retriever = vector_db.as_retriever(search_kwargs={"k": 10})
+        # BUSCADOR ENFOCADO: Recupera los 6 fragmentos más relevantes
+        retriever = vector_db.as_retriever(search_kwargs={"k": 6})
         
         model = ChatOpenAI(model="gpt-4o", temperature=0)
         
         template = """
-        Eres el ASISTENTE IA IEDTACA, experto en la normativa de la institución.
-        Tu misión es responder preguntas de docentes y directivos usando el contexto proporcionado.
-
-        INSTRUCCIONES DE RESPUESTA:
-        1. Si la información está en los documentos, explícala detalladamente.
-        2. Si la información es parcial, intenta relacionar los datos para ayudar al docente.
-        3. Si la respuesta NO está en los documentos, di: "Lamentablemente no encontré esa información específica en los manuales cargados, pero le sugiero consultar con [coordinación/secretaría] o revisar el documento de [tema relacionado]".
+        Eres el ASISTENTE IA IEDTACA. Tu base de conocimiento son los documentos institucionales proporcionados.
         
+        INSTRUCCIONES CRÍTICAS:
+        1. Responde basándote estrictamente en el contexto.
+        2. Si la información parece estar dispersa, relaciónala para dar una respuesta coherente.
+        3. Si la respuesta está en los documentos, sé específico y cita el nombre del documento si es posible.
+        4. No respondas "no sé" si hay información relacionada que pueda ayudar al docente. 
+        5. Solo si no hay rastro del tema, indica que no se encuentra en la base de datos actual.
+
         Contexto: {context}
         Pregunta: {question}
-        Respuesta:
+        Respuesta Institucional:
         """
         prompt = ChatPromptTemplate.from_template(template)
 
@@ -131,18 +135,18 @@ else:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt_input := st.chat_input("¿Qué duda técnica o normativa tienes hoy?"):
+        if prompt_input := st.chat_input("Realiza tu consulta sobre la normativa institucional aquí..."):
             st.session_state.messages.append({"role": "user", "content": prompt_input})
             with st.chat_message("user"):
                 st.markdown(prompt_input)
 
             with st.chat_message("assistant"):
-                with st.spinner("Escaneando manuales institucionales..."):
+                with st.spinner("Analizando manuales y reglamentos..."):
                     try:
                         respuesta = rag_chain.invoke(prompt_input)
                         st.markdown(respuesta)
                         st.session_state.messages.append({"role": "assistant", "content": respuesta})
                     except Exception as e:
-                        st.error(f"Error en la respuesta: {e}")
+                        st.error(f"Hubo un problema al consultar la base de datos: {e}")
     else:
-        st.warning("⚠️ No se encontraron documentos en la carpeta 'docs'.")
+        st.warning("⚠️ No se cargó la base de conocimiento. Verifica que los PDFs estén en la carpeta 'docs'.")
