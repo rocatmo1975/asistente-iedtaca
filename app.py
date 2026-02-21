@@ -78,7 +78,7 @@ def inicializar_ia(folder_path, _api_key):
             loader = PyPDFLoader(ruta_pdf)
             documentos_completos.extend(loader.load())
         
-        # AJUSTE DE PRECISIÓN: Fragmentos más pequeños (600) para evitar omisiones
+        # AJUSTE DE PRECISIÓN: Fragmentos más pequeños (600) con solape
         text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=600, 
             chunk_overlap=120,
@@ -98,10 +98,10 @@ def inicializar_ia(folder_path, _api_key):
         
         INSTRUCCIONES CRÍTICAS:
         1. Responde basándote estrictamente en el contexto.
-        2. Si la información parece estar dispersa, relaciónala para dar una respuesta coherente.
-        3. Si la respuesta está en los documentos, sé específico y cita el nombre del documento si es posible.
-        4. No respondas "no sé" si hay información relacionada que pueda ayudar al docente. 
-        5. Solo si no hay rastro del tema, indica que no se encuentra en la base de datos actual.
+        2. Si la información parece estar dispersa entre varios documentos, relaciónala.
+        3. Cita el nombre del documento de donde sacas la información siempre que sea posible.
+        4. No digas "no sé" si hay temas relacionados en el contexto que puedan orientar al docente. 
+        5. Sé profesional, amable y preciso.
 
         Contexto: {context}
         Pregunta: {question}
@@ -150,3 +150,4 @@ else:
                         st.error(f"Hubo un problema al consultar la base de datos: {e}")
     else:
         st.warning("⚠️ No se cargó la base de conocimiento. Verifica que los PDFs estén en la carpeta 'docs'.")
+                  
