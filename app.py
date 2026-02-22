@@ -10,7 +10,7 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 
-# --- 1. CONFIGURACIÓN DE PÁGINA E ICONO ---
+# --- 1. CONFIGURACIÓN DE PÁGINA ---
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LOGO_PATH = os.path.join(BASE_DIR, "logo.png")
 LOGO_URL_RAW = "https://github.com/rocatmo1975/asistente-iedtaca/blob/main/logo.png?raw=true"
@@ -22,13 +22,11 @@ st.set_page_config(
     layout="wide"
 )
 
-# INYECCIÓN DE CÓDIGO HTML PARA ICONO Y ESTILO
+# ESTILOS E ICONOS
 st.markdown(f"""
     <head>
         <link rel="icon" type="image/png" href="{LOGO_URL_RAW}">
         <link rel="apple-touch-icon" href="{LOGO_URL_RAW}">
-        <meta name="mobile-web-app-capable" content="yes">
-        <meta name="apple-mobile-web-app-capable" content="yes">
     </head>
     <style>
         #MainMenu {{visibility: hidden;}}
@@ -47,65 +45,61 @@ if os.path.exists(LOGO_PATH):
             st.image(LOGO_PATH, use_container_width=True)
         except:
             st.write("🏫")
-else:
-    st.markdown("<h3 style='text-align: center;'>🏫</h3>", unsafe_allow_html=True)
-
-st.markdown("<p style='text-align: center; color: gray;'>Sistema de consulta técnica - Carmen de Ariguaní</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Versión Profesional de Alta Precisión</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# --- 3. LÓGICA DE IA OPTIMIZADA (RAG DE ALTA PRECISIÓN) ---
+# --- 3. LÓGICA DE IA CON BUSCADOR DE ALTA PRECISIÓN (MMR) ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-@st.cache_resource(show_spinner="Sincronizando base de conocimiento... Esto garantiza respuestas precisas.")
+@st.cache_resource(show_spinner="Optimizando búsqueda en 61 documentos... Por favor espere.")
 def inicializar_ia(folder_path, _api_key):
-    if not _api_key:
-        return None
-    
+    if not _api_key: return None
     os.environ["OPENAI_API_KEY"] = _api_key
     
-    if not os.path.exists(folder_path):
-        return None
-    
+    if not os.path.exists(folder_path): return None
     pdf_files = [f for f in os.listdir(folder_path) if f.endswith(".pdf")]
-    if not pdf_files:
-        return None
+    if not pdf_files: return None
         
     try:
         documentos_completos = []
         for pdf in pdf_files:
-            ruta_pdf = os.path.join(folder_path, pdf)
-            loader = PyPDFLoader(ruta_pdf)
+            loader = PyPDFLoader(os.path.join(folder_path, pdf))
             documentos_completos.extend(loader.load())
         
-        # AJUSTE DE PRECISIÓN: Fragmentos más pequeños (600) con solape
+        # Fragmentación más fina para no saltarse nombres propios
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=600, 
-            chunk_overlap=120,
+            chunk_size=500, 
+            chunk_overlap=100,
             separators=["\n\n", "\n", ".", " ", ""]
         )
         textos_fragmentados = text_splitter.split_documents(documentos_completos)
-        
         vector_db = FAISS.from_documents(textos_fragmentados, OpenAIEmbeddings())
         
-        # BUSCADOR ENFOCADO: Recupera los 6 fragmentos más relevantes
-        retriever = vector_db.as_retriever(search_kwargs={"k": 6})
+        # --- AJUSTE MAESTRO: BUSCADOR MMR ---
+        # fetch_k=20 analiza 20 bloques y elige los 7 más relevantes y distintos
+        retriever = vector_db.as_retriever(
+            search_type="mmr",
+            search_kwargs={"k": 7, "fetch_k": 20, "lambda_mult": 0.5}
+        )
         
         model = ChatOpenAI(model="gpt-4o", temperature=0)
         
         template = """
-        Eres el ASISTENTE IA IEDTACA. Tu base de conocimiento son los documentos institucionales proporcionados.
-        
-        INSTRUCCIONES CRÍTICAS:
-        1. Responde basándote estrictamente en el contexto.
-        2. Si la información parece estar dispersa entre varios documentos, relaciónala.
-        3. Cita el nombre del documento de donde sacas la información siempre que sea posible.
-        4. No digas "no sé" si hay temas relacionados en el contexto que puedan orientar al docente. 
-        5. Sé profesional, amable y preciso.
+        Eres el Asistente Experto de la IEDTACA. Tu misión es extraer datos exactos de los manuales.
 
-        Contexto: {context}
-        Pregunta: {question}
-        Respuesta Institucional:
+        CONTEXTO INSTITUCIONAL:
+        {context}
+
+        PREGUNTA DEL DOCENTE:
+        {question}
+
+        INSTRUCCIONES:
+        1. Si la pregunta pide un nombre propio (ej: Rector, Coordinador), búscalo con prioridad en los encabezados o firmas detectadas en el texto.
+        2. Si encuentras la información, responde de forma directa y profesional.
+        3. Si la información no es exacta pero hay algo muy relacionado, menciónalo.
+        
+        RESPUESTA:
         """
         prompt = ChatPromptTemplate.from_template(template)
 
@@ -118,12 +112,12 @@ def inicializar_ia(folder_path, _api_key):
         )
         return chain
     except Exception as e:
-        st.error(f"Error procesando documentos: {e}")
+        st.error(f"Error técnico: {e}")
         return None
 
-# --- 4. EJECUCIÓN DEL CHAT ---
+# --- 4. EJECUCIÓN ---
 if not api_key:
-    st.error("❌ Falta la API KEY en los Secrets de Streamlit.")
+    st.error("Falta la API KEY.")
 else:
     rag_chain = inicializar_ia(DOCS_DIR, api_key)
     
@@ -135,19 +129,13 @@ else:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt_input := st.chat_input("Realiza tu consulta sobre la normativa institucional aquí..."):
+        if prompt_input := st.chat_input("¿Qué dato específico buscas hoy?"):
             st.session_state.messages.append({"role": "user", "content": prompt_input})
             with st.chat_message("user"):
                 st.markdown(prompt_input)
 
             with st.chat_message("assistant"):
-                with st.spinner("Analizando manuales y reglamentos..."):
-                    try:
-                        respuesta = rag_chain.invoke(prompt_input)
-                        st.markdown(respuesta)
-                        st.session_state.messages.append({"role": "assistant", "content": respuesta})
-                    except Exception as e:
-                        st.error(f"Hubo un problema al consultar la base de datos: {e}")
-    else:
-        st.warning("⚠️ No se cargó la base de conocimiento. Verifica que los PDFs estén en la carpeta 'docs'.")
- 
+                with st.spinner("Escaneando minuciosamente..."):
+                    respuesta = rag_chain.invoke(prompt_input)
+                    st.markdown(respuesta)
+                    st.session_state.messages.append({"role": "assistant", "content": respuesta})
