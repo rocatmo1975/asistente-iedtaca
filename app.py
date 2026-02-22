@@ -150,3 +150,4 @@ else:
                         st.error(f"Error en consulta: {e}")
     else:
         st.warning("⚠️ Sin documentos. Sube tus PDFs a la carpeta 'docs' en GitHub.")
+                   
