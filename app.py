@@ -150,4 +150,4 @@ else:
                         st.error(f"Hubo un problema al consultar la base de datos: {e}")
     else:
         st.warning("⚠️ No se cargó la base de conocimiento. Verifica que los PDFs estén en la carpeta 'docs'.")
-                  
+ 
