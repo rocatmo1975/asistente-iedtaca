@@ -22,7 +22,7 @@ st.set_page_config(
     layout="wide"
 )
 
-# ESTILOS E ICONOS
+# ESTILOS PERSONALIZADOS
 st.markdown(f"""
     <head>
         <link rel="icon" type="image/png" href="{LOGO_URL_RAW}">
@@ -31,12 +31,13 @@ st.markdown(f"""
     <style>
         #MainMenu {{visibility: hidden;}}
         footer {{visibility: hidden;}}
-        .stChatMessage {{ border-radius: 15px; }}
+        .stChatMessage {{ border-radius: 15px; border: 1px solid #f0f2f6; }}
+        .stChatInput {{ border-radius: 10px; }}
     </style>
 """, unsafe_allow_html=True)
 
 # --- 2. DISEÑO DE INTERFAZ ---
-st.markdown(f"<h1 style='text-align: center;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
+st.markdown(f"<h1 style='text-align: center; color: #1E3A8A;'>{NOMBRE_APP}</h1>", unsafe_allow_html=True)
 
 if os.path.exists(LOGO_PATH):
     col1, col2, col3 = st.columns([2, 1, 2])
@@ -45,14 +46,14 @@ if os.path.exists(LOGO_PATH):
             st.image(LOGO_PATH, use_container_width=True)
         except:
             st.write("🏫")
-st.markdown("<p style='text-align: center; color: gray;'>Versión Profesional de Alta Precisión</p>", unsafe_allow_html=True)
+st.markdown("<p style='text-align: center; color: gray;'>Sistema de Inteligencia Institucional - Carmen de Ariguaní</p>", unsafe_allow_html=True)
 st.markdown("---")
 
-# --- 3. LÓGICA DE IA CON BUSCADOR DE ALTA PRECISIÓN (MMR) ---
+# --- 3. LÓGICA DE IA DE ALTA CAPACIDAD (MMR + SOURCE TRACKING) ---
 api_key = st.secrets.get("OPENAI_API_KEY")
 DOCS_DIR = os.path.join(BASE_DIR, "docs")
 
-@st.cache_resource(show_spinner="Optimizando búsqueda en 61 documentos... Por favor espere.")
+@st.cache_resource(show_spinner="Procesando múltiples documentos... Esto optimiza la precisión.")
 def inicializar_ia(folder_path, _api_key):
     if not _api_key: return None
     os.environ["OPENAI_API_KEY"] = _api_key
@@ -65,46 +66,51 @@ def inicializar_ia(folder_path, _api_key):
         documentos_completos = []
         for pdf in pdf_files:
             loader = PyPDFLoader(os.path.join(folder_path, pdf))
-            documentos_completos.extend(loader.load())
+            docs = loader.load()
+            # SELLO DE FUENTE: Guardamos el nombre del archivo en cada página
+            for doc in docs:
+                doc.metadata["source"] = pdf
+            documentos_completos.extend(docs)
         
-        # Fragmentación más fina para no saltarse nombres propios
+        # Fragmentos quirúrgicos (450 caracteres) para navegar entre mucho texto
         text_splitter = RecursiveCharacterTextSplitter(
-            chunk_size=500, 
-            chunk_overlap=100,
+            chunk_size=450, 
+            chunk_overlap=80,
             separators=["\n\n", "\n", ".", " ", ""]
         )
         textos_fragmentados = text_splitter.split_documents(documentos_completos)
         vector_db = FAISS.from_documents(textos_fragmentados, OpenAIEmbeddings())
         
-        # --- AJUSTE MAESTRO: BUSCADOR MMR ---
-        # fetch_k=20 analiza 20 bloques y elige los 7 más relevantes y distintos
+        # BUSCADOR DE DIVERSIDAD (MMR): Analiza 30 opciones para darte las 12 más variadas
         retriever = vector_db.as_retriever(
             search_type="mmr",
-            search_kwargs={"k": 7, "fetch_k": 20, "lambda_mult": 0.5}
+            search_kwargs={"k": 12, "fetch_k": 30, "lambda_mult": 0.3}
         )
         
         model = ChatOpenAI(model="gpt-4o", temperature=0)
         
         template = """
-        Eres el Asistente Experto de la IEDTACA. Tu misión es extraer datos exactos de los manuales.
-
-        CONTEXTO INSTITUCIONAL:
+        Eres el Asistente Experto de la IEDTACA. Tu base de conocimiento es extensa.
+        
+        CONTEXTO RECUPERADO DE DOCUMENTOS:
         {context}
 
-        PREGUNTA DEL DOCENTE:
+        PREGUNTA:
         {question}
 
-        INSTRUCCIONES:
-        1. Si la pregunta pide un nombre propio (ej: Rector, Coordinador), búscalo con prioridad en los encabezados o firmas detectadas en el texto.
-        2. Si encuentras la información, responde de forma directa y profesional.
-        3. Si la información no es exacta pero hay algo muy relacionado, menciónalo.
-        
-        RESPUESTA:
+        REGLAS DE RESPUESTA:
+        1. Identifica nombres, fechas y resoluciones específicas. 
+        2. Si hay varios documentos que mencionan lo mismo, prioriza la información del archivo con el nombre más actual o reciente.
+        3. Indica de qué documento extrajiste la información clave.
+        4. Si no encuentras el dato exacto, menciona qué temas relacionados sí aparecen.
+
+        RESPUESTA INSTITUCIONAL:
         """
         prompt = ChatPromptTemplate.from_template(template)
 
+        # Función para formatear incluyendo la fuente del archivo
         def format_docs(docs):
-            return "\n\n".join(doc.page_content for doc in docs)
+            return "\n\n".join([f"ARCHIVO: {d.metadata['source']}\nCONTENIDO: {d.page_content}" for d in docs])
 
         chain = (
             {"context": retriever | format_docs, "question": RunnablePassthrough()}
@@ -112,12 +118,12 @@ def inicializar_ia(folder_path, _api_key):
         )
         return chain
     except Exception as e:
-        st.error(f"Error técnico: {e}")
+        st.error(f"Error al indexar documentos: {e}")
         return None
 
-# --- 4. EJECUCIÓN ---
+# --- 4. CHAT INTERACTIVO ---
 if not api_key:
-    st.error("Falta la API KEY.")
+    st.error("❌ Configura la OPENAI_API_KEY en Streamlit Secrets.")
 else:
     rag_chain = inicializar_ia(DOCS_DIR, api_key)
     
@@ -129,13 +135,18 @@ else:
             with st.chat_message(message["role"]):
                 st.markdown(message["content"])
 
-        if prompt_input := st.chat_input("¿Qué dato específico buscas hoy?"):
+        if prompt_input := st.chat_input("Consulta manuales, circulares o reglamentos..."):
             st.session_state.messages.append({"role": "user", "content": prompt_input})
             with st.chat_message("user"):
                 st.markdown(prompt_input)
 
             with st.chat_message("assistant"):
-                with st.spinner("Escaneando minuciosamente..."):
-                    respuesta = rag_chain.invoke(prompt_input)
-                    st.markdown(respuesta)
-                    st.session_state.messages.append({"role": "assistant", "content": respuesta})
+                with st.spinner("Escaneando base de datos completa..."):
+                    try:
+                        respuesta = rag_chain.invoke(prompt_input)
+                        st.markdown(respuesta)
+                        st.session_state.messages.append({"role": "assistant", "content": respuesta})
+                    except Exception as e:
+                        st.error(f"Error en consulta: {e}")
+    else:
+        st.warning("⚠️ Sin documentos. Sube tus PDFs a la carpeta 'docs' en GitHub.")
